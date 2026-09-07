@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Caches / outputs
+out/
+*.npy
+.cache/
+embeddings_cache/
+.chroma/
+chroma/
+
+# Env & secrets
+.env
+.env.*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Data — keep small demo jsonl, ignore large/generated stores
+data/*.sqlite3
+data/*_db/
+
+# Notebooks
+.ipynb_checkpoints/

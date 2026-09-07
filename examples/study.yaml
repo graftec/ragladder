@@ -1,0 +1,51 @@
+# Example ragladder study config.
+# Defines an experiment: compare embedding models on the Swiss OR demo corpus,
+# across the ablation ladder (dense -> +bm25 -> +rerank).
+#
+# Run with:  ragladder run examples/study.yaml
+
+# --- Dataset (BEIR-style JSONL; see docs/DATA_FORMAT.md) ---
+corpus:  data/or-corpus.jsonl
+queries: data/or-queries.jsonl
+qrels:   data/or-qrels.jsonl
+
+# --- Embedding models to compare (each becomes a column) ---
+embedders:
+  - name: e5-large
+    type: sentence_transformers
+    model: intfloat/multilingual-e5-large
+    query_prefix: "query: "       # E5 requires these prefixes
+    doc_prefix: "passage: "
+    # native dim 1024, max input ~512 tokens (short! watch truncation on long articles)
+
+  - name: voyage-law-2
+    type: voyage
+    model: voyage-law-2
+    api_key_env: VOYAGE_API_KEY    # API model; text is sent to Voyage, search stays local
+    # legal-domain, long context (~16000 tokens)
+
+  - name: bge-m3
+    type: sentence_transformers
+    model: BAAI/bge-m3
+    # native dim 1024, long context (~8192 tokens)
+
+# --- Retrieval pipeline (order also defines the ablation ladder) ---
+pipeline: [dense, bm25, rerank]
+
+reranker:
+  type: cross_encoder
+  model: BAAI/bge-reranker-v2-m3
+
+fusion:
+  type: rrf
+  k: 60
+
+store:
+  type: inmemory_exact            # default; exact search, no ANN confound
+  # type: chroma                  # optional alternative
+  # path: ./chroma
+
+# --- Evaluation ---
+metrics: [recall@10, mrr, perfect_retrieval_rate]
+k: 10
+n_rerank: 50                      # candidates passed into the reranker

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ragladder"
+version = "0.0.0"
+description = "Evaluate which stage of your RAG retrieval pipeline earns its keep — and whether it's feeding the LLM wrong context."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Alain Graf" }]
+keywords = ["rag", "retrieval", "evaluation", "embeddings", "reranking", "beir", "information-retrieval"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core dependencies kept light; heavy/optional backends behind extras.
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "typer>=0.12",
+    "rank-bm25>=0.2.2",
+    "sentence-transformers>=3.0",
+]
+
+[project.optional-dependencies]
+voyage = ["voyageai>=0.2"]
+chroma = ["chromadb>=0.5"]
+faiss = ["faiss-cpu>=1.8"]
+openai = ["openai>=1.0"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.urls]
+Homepage = "https://github.com/graftec/ragladder"
+Repository = "https://github.com/graftec/ragladder"
+
+[project.scripts]
+ragladder = "ragladder.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ragladder"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
