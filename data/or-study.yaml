@@ -1,0 +1,31 @@
+# The real OR study: multilingual/legal models on the Swiss Code of Obligations.
+corpus:  or-corpus.jsonl
+queries: or-queries.jsonl
+qrels:   or-qrels.jsonl
+
+embedders:
+  - name: e5-large
+    type: sentence_transformers
+    model: intfloat/multilingual-e5-large
+    query_prefix: "query: "        # E5 requires these prefixes
+    doc_prefix: "passage: "
+  - name: bge-m3
+    type: sentence_transformers
+    model: BAAI/bge-m3
+  - name: voyage-law-2          # legal-domain, series 2 (50M free tokens)
+    type: voyage
+    model: voyage-law-2
+    api_key_env: VOYAGE_API_KEY
+  - name: voyage-4-large        # general multilingual, series 4 (200M free tokens), MRL
+    type: voyage
+    model: voyage-4-large
+    api_key_env: VOYAGE_API_KEY
+    max_input_tokens: 32000     # for accurate truncation stats (law-2 defaults to 16000)
+
+pipeline: [dense, bm25, rerank]
+reranker: {type: cross_encoder, model: BAAI/bge-reranker-v2-m3}
+store: {type: inmemory_exact}
+fusion: {type: rrf, k: 60}
+metrics: [recall@10, mrr, perfect_retrieval_rate@3]
+k: 10
+n_rerank: 50

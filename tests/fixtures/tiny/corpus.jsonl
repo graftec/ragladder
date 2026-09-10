@@ -1,0 +1,10 @@
+{"_id": "d1", "title": "Cat", "text": "cat feline pet purr whiskers", "metadata": {"topic": "animals"}}
+{"_id": "d2", "title": "Dog", "text": "dog canine bark loyal puppy", "metadata": {"topic": "animals"}}
+{"_id": "d3", "title": "Car", "text": "car engine wheel drive road", "metadata": {"topic": "vehicles"}}
+{"_id": "d4", "title": "Boat", "text": "boat sail ocean water harbor", "metadata": {"topic": "vehicles"}}
+{"_id": "d5", "title": "Python", "text": "python programming code function loop", "metadata": {"topic": "tech"}}
+{"_id": "d6", "title": "Bread", "text": "bread bake flour oven dough", "metadata": {"topic": "food"}}
+{"_id": "d7", "title": "Guitar", "text": "guitar music string chord melody", "metadata": {"topic": "music"}}
+{"_id": "d8", "title": "Mountain", "text": "mountain hike trail summit climb", "metadata": {"topic": "outdoors"}}
+{"_id": "d9", "title": "Weather", "text": "rain cloud weather storm umbrella", "metadata": {"topic": "weather"}}
+{"_id": "d10", "title": "Coffee", "text": "coffee espresso caffeine brew mug", "metadata": {"topic": "food"}}

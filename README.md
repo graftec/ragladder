@@ -2,116 +2,170 @@
 
 **Measure which stage of your RAG retrieval pipeline actually earns its keep — and whether it's feeding your LLM the wrong context.**
 
-`ragladder` is a small, opinionated evaluation tool for the **retrieval** layer of Retrieval-Augmented Generation (RAG) systems. Where most eval tools score *a* pipeline, `ragladder` builds an **ablation ladder**: it adds one retrieval stage at a time (dense → +BM25 → +rerank) and reports the *marginal* lift of each stage, so you can see what's worth its latency and cost. It also reports **precision / wrong-context metrics** — not just "did we find the right document?" but "are we poisoning the context window with wrong ones?"
+`ragladder` is a small, opinionated evaluation tool for the **retrieval** layer of Retrieval-Augmented Generation (RAG) systems. Its two signatures:
+
+1. **The ablation ladder.** It adds one retrieval stage at a time — dense → +BM25 → +rerank — and reports the *marginal* lift of each, so you can see what a stage is worth before paying for its latency and cost.
+2. **Precision, not just recall.** Beyond "did we find the right document?" it measures whether the context is being *poisoned* with wrong ones — a **Perfect Retrieval Rate** (share of queries with zero wrong documents) and average wrong-document counts, alongside recall@k / MRR.
 
 It is domain-agnostic (BEIR-compatible input), runs on a laptop (exact in-memory search by default — no vector database required), and ships with a **Swiss legal German** demo dataset (the Code of Obligations, *Obligationenrecht* / OR).
 
-> Status: **early scaffold.** This repository currently contains the design, documentation, and project skeleton. Implementation is pending — see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+---
+
+## Why the retrieval layer
+
+In RAG, retrieved documents *become* the LLM's context. A single wrong document doesn't just waste space — it can make the model hallucinate confidently. Yet retrieval is usually tuned on faith: teams stack hybrid search and reranking without measuring what each contributes. `ragladder` makes that contribution visible and defensible, and evaluates it with **exact** nearest-neighbor search so an approximate index's recall loss never confounds the number.
 
 ---
 
-## Why another RAG eval tool?
-
-Most RAG evaluation tooling (Ragas, DeepEval, TruLens, …) focuses on **generation quality** (faithfulness, answer relevance) via LLM-as-judge. The retrieval layer — which decides *what the LLM even gets to see* — is comparatively under-served. The one close neighbor, [ragtune](https://github.com/metawake/ragtune), is a recall-first retrieval debugger.
-
-`ragladder` stakes out a narrower, sharper claim:
-
-1. **Stage attribution.** Teams stack hybrid search, query reformulation, and reranking on faith. `ragladder`'s headline output is the **ablation ladder** — the metric after each added stage — so the *marginal value* of every stage is visible and defensible.
-2. **Precision, not just recall.** In high-stakes domains a single wrong document in context makes an LLM hallucinate confidently. `ragladder` reports a **Perfect Retrieval Rate** (share of queries with *zero* wrong documents retrieved) and wrong-document counts alongside the usual recall@k / MRR.
-3. **Rigorous by default.** Retrieval is evaluated with **exact** nearest-neighbor search, so an approximate-index's recall loss never confounds the measurement. No vector DB required to get a trustworthy number.
-
-It is deliberately a **scalpel, not a suite** — see the guardrails in [`CLAUDE.md`](CLAUDE.md).
-
----
-
-## What it does (at a glance)
-
-```
-                query
-                  │
-        ┌─────────┴─────────┐
-        ▼                   ▼
-     dense                bm25          ← parallel: meaning-search + keyword-search
-        │                   │
-        └────────┬──────────┘
-                 ▼
-             fuse (RRF)                 ← merge into ONE candidate list
-                 ▼
-             rerank                     ← cross-encoder re-sorts the merged list
-                 ▼
-             top-k  →  metrics
-```
-
-- **Compare embedding models** head-to-head (e.g. `multilingual-e5-large` vs `voyage-law-2` vs `bge-m3`).
-- **Ablation ladder**: dense → +BM25 → +rerank, with per-stage lift.
-- **A/B compare** two configs with query-level "rescued / lost" attribution.
-- **Inspect** a single query: what was retrieved, at what score, which were right/wrong.
-- **Corpus stats**: token-length distribution and per-model **truncation rate** (does your embedding model even read the whole document?).
-
----
-
-## Installation
-
-> Not yet published. Planned:
+## Install
 
 ```bash
-pip install ragladder
+pip install -e .                 # core
+pip install -e ".[voyage]"       # + Voyage API embedder
+pip install -e ".[chroma,dev]"   # + optional backends / dev tools
 ```
 
-For development, see [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) (to be written).
+Python 3.10+. Local models use `sentence-transformers`; runs on Apple Silicon (MPS) or CPU.
 
 ---
 
 ## Quick start
 
-Everything is driven by a **study config** (`study.yaml`) plus a BEIR-style dataset (three JSONL files). See [`examples/study.yaml`](examples/study.yaml).
+Everything is driven by a **study config** plus a BEIR-style dataset (three JSONL files).
 
 ```bash
-# Run the full study: every embedder × every pipeline stage → ladder + comparison tables + report
-ragladder run examples/study.yaml
+# Full study: every embedder × the ablation ladder → tables + results.json + report.html
+ragladder run data/or-study.yaml --output out
 
-# A/B: which queries did each variant rescue vs lose?
-ragladder compare examples/study.yaml --a e5-large --b voyage-law-2
+# Add per-embedder diagnostics (stage attribution + reranker score-threshold sweep)
+ragladder run data/or-study.yaml --output out --diagnostics
 
-# Single-query diagnostic
-ragladder inspect examples/study.yaml --query "Wer haftet, wenn ein Dritter die Schuld erfüllt?"
+# A/B two embedders through the full pipeline, with per-query rescued/lost
+ragladder compare data/or-study.yaml --a e5-large --b bge-m3
 
-# Corpus stats: token lengths + per-model truncation rate
-ragladder stats data/or-corpus.jsonl --against examples/study.yaml
+# Single-query diagnostic: what each stage retrieved, its scores, right vs wrong
+ragladder inspect data/or-study.yaml --query-id q1 --embedder bge-m3
+
+# Corpus length distribution + per-model truncation rate
+ragladder stats data/or-corpus.jsonl --against data/or-study.yaml
 ```
 
-Outputs: pretty terminal tables, a machine-readable `results.json`, and a shareable `report.html` (where the ladder chart lives).
+### The study config
+
+```yaml
+corpus:  or-corpus.jsonl
+queries: or-queries.jsonl
+qrels:   or-qrels.jsonl
+
+embedders:                         # each becomes a column; comparing them is the point
+  - {name: e5-large, type: sentence_transformers, model: intfloat/multilingual-e5-large,
+     query_prefix: "query: ", doc_prefix: "passage: "}
+  - {name: bge-m3,   type: sentence_transformers, model: BAAI/bge-m3}
+
+pipeline: [dense, bm25, rerank]    # prefixes of this list form the ladder rungs
+reranker: {type: cross_encoder, model: BAAI/bge-reranker-v2-m3}
+store:   {type: inmemory_exact}    # default: exact search, no ANN confound
+fusion:  {type: rrf, k: 60}
+
+metrics: [recall@10, mrr, perfect_retrieval_rate@3]
+k: 10
+n_rerank: 50                       # candidates passed into the reranker
+```
+
+Anything substantive lives in the config (reproducible, versionable); the CLI just executes it.
 
 ---
 
-## Data format
+## How retrieval runs
 
-`ragladder` consumes the **BEIR** convention — three JSONL files:
+```
+                query
+          ┌───────┴───────┐
+          ▼               ▼
+        dense           bm25          parallel: meaning-search + keyword-search
+          └───────┬───────┘
+                  ▼
+              fuse (RRF)              merge into ONE deduplicated candidate list
+                  ▼
+                rerank                cross-encoder re-sorts the merged list
+                  ▼
+              top-k  →  metrics
+```
 
-- `corpus.jsonl` — the retrievable units (`_id`, `title`, `text`, `metadata`)
-- `queries.jsonl` — the questions (`_id`, `text`, `metadata`)
-- `qrels` — relevance judgments (which corpus `_id`s are correct per query)
-
-The tool never parses domain sources (XML, PDF, …); converting your corpus *into* this format is an upstream, domain-specific step. See [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md).
+The **ablation ladder** is different from this execution order: it compares *separate runs* — `[dense]`, then `[dense, bm25]`, then `[dense, bm25, rerank]` — reporting the metric at each rung to attribute the marginal lift of each stage.
 
 ---
 
-## Documentation
+## Data format (BEIR)
 
-| Doc | Contents |
+Three JSONL files. The tool never parses domain sources (XML, PDF, …); converting your corpus *into* this format is an upstream, domain-specific step (see `data/build_or_dataset.py` for the OR demo).
+
+- **`corpus.jsonl`** — `{"_id", "title"?, "text", "metadata"?}`. Only `text` is embedded; `metadata` is for display/filtering.
+- **`queries.jsonl`** — `{"_id", "text", "metadata"?}`.
+- **`qrels`** — relevance judgments, as JSONL (`{"query_id", "relevant": [ids]}`) or BEIR TSV. Stable `_id`s are the linchpin: they must match across files.
+
+---
+
+## Metrics
+
+| Metric | What it says |
 |---|---|
-| [`docs/POSITIONING.md`](docs/POSITIONING.md) | The project's purpose, the story/paper angle, the demo dataset |
-| [`docs/DESIGN.md`](docs/DESIGN.md) | Architecture: adapters, retrieval flow, exact-search rationale |
-| [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) | The BEIR JSONL contract (corpus / queries / qrels) |
-| [`docs/METRICS.md`](docs/METRICS.md) | recall@k, MRR, Perfect Retrieval Rate, wrong-document metrics |
-| [`docs/CLI.md`](docs/CLI.md) | Command surface: `run` / `compare` / `inspect` / `stats` |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Launch scope and staged follow-ups |
-| [`CLAUDE.md`](CLAUDE.md) | Context & guardrails for AI-assisted development |
+| **recall@k** | Share of a query's relevant documents found in the top-`k`. Coverage. |
+| **MRR** | Rank of the first correct document (1.0 = always first). Ranking quality. |
+| **Perfect Retrieval Rate (PRR@k)** | Share of queries whose top-`k` contain **zero** wrong documents — a clean context. Precision. |
+| **avg wrong-doc count** | Average irrelevant documents in the top-`k` — the context "noise" handed to the LLM. |
+
+`recall@k` / `mrr` use `k`; PRR and avg-wrong can use a smaller cutoff (e.g. `perfect_retrieval_rate@3`).
+
+---
+
+## Output
+
+`run` produces three synchronized views:
+
+- **Terminal** (`rich`): a summary verdict, the model-comparison table, and one ablation ladder per embedder.
+- **`results.json`**: the full machine-readable results — metrics, cross-embedder summary, corpus/truncation stats, and (with `--diagnostics`) the deep diagnostics.
+- **`report.html`**: a self-contained, shareable report (inline SVG ladder charts, no external assets).
+
+The **summary** ranks embedders by a balanced score, picks a favorite, names the per-axis winners, and rates the best config's absolute strength (strong / good / moderate / weak) — with a flag when the query set is too small to trust small gaps.
+
+The **diagnostics** (opt-in) add, per embedder: *stage attribution* (candidate-pool recall ceiling, what reranking rescued or dropped, and which retriever found each relevant doc) and a *reranker score-threshold sweep* (how a minimum-score floor trades retained recall against a cleaner context).
+
+---
+
+## Adapters
+
+Everything swappable is a named adapter chosen in config, via a small registry:
+
+- **Embedders** — `sentence_transformers` (e5, bge-m3, …), `voyage` (API; e.g. voyage-law-2).
+- **Reranker** — `cross_encoder` (e.g. bge-reranker-v2-m3).
+- **Store** — `inmemory_exact` (default; exact cosine), `chroma` (optional).
+
+Adding a model or backend is a config change; adding a new *kind* of backend is a small adapter plus a registered name.
+
+---
+
+## The demo dataset
+
+The Swiss *Obligationenrecht* (SR 220) ships as `data/or-corpus.jsonl` (~1,600 articles), `data/or-queries.jsonl`, and `data/or-qrels.jsonl`, produced by the demo-side converters in `data/` from the official Fedlex XML and a question set. The corpus is public federal law, safe to redistribute.
+
+---
+
+## Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest        # test suite
+ruff check .  # lint
+```
+
+Deterministic evaluation (no randomness in metrics). Corpus embeddings are cached to disk keyed by `(model, corpus hash)`, so re-runs and ladders don't recompute.
 
 ---
 
 ## License
 
-MIT © 2026 Alain Graf. See [`LICENSE`](LICENSE).
+MIT © 2026 Alain Graf. The bundled Swiss law demo corpus derives from the official *Obligationenrecht* (SR 220), which is public federal law.
 
-The bundled Swiss law demo corpus derives from the official *Obligationenrecht* (SR 220), which is public federal law.
+*Built with the help of [Claude Code](https://claude.com/claude-code).*

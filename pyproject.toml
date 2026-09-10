@@ -50,3 +50,8 @@ packages = ["ragladder"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# B008 fires on typer.Argument/Option defaults, which is the idiomatic Typer
+# pattern (the call builds the CLI param spec, it is not an eager default).
+ignore = ["B008"]

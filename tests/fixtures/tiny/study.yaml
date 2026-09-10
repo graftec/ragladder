@@ -1,0 +1,19 @@
+# Tiny synthetic study for tests and smoke runs. No model download required
+# when paired with the bag-of-words embedder in the test suite; swap in a real
+# `sentence_transformers` embedder to exercise the full stack.
+corpus:  corpus.jsonl
+queries: queries.jsonl
+qrels:   qrels.jsonl
+
+embedders:
+  - name: bow
+    type: bag_of_words   # registered by the test suite; not a shipped adapter
+
+pipeline: [dense]
+
+store: {type: inmemory_exact}
+fusion: {type: rrf, k: 60}
+
+metrics: [recall@5, mrr, perfect_retrieval_rate]
+k: 5
+n_rerank: 10

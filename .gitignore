@@ -32,3 +32,6 @@ data/*_db/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Test cache
+.pytest_cache/
