@@ -62,7 +62,14 @@ def run(
     retriever = Retriever(
         cfg, dataset, limit=limit, cache_dir=None if no_cache else ".cache/embeddings"
     )
-    result = run_study(cfg, retriever=retriever)
+    n_q = len(retriever.queries)
+    console.print(
+        f"[dim]running {len(cfg.embedders)} embedder(s) over {n_q} queries "
+        f"(pipeline: {' → '.join(cfg.pipeline)})…[/dim]"
+    )
+    result = run_study(
+        cfg, retriever=retriever, progress=lambda m: console.print(f"[dim]· {m}[/dim]")
+    )
 
     render_run(result, console)
 
@@ -73,7 +80,8 @@ def run(
 
     diag: dict = {}
     if diagnostics:
-        for emb_cfg in cfg.embedders:
+        for i, emb_cfg in enumerate(cfg.embedders, start=1):
+            console.print(f"[dim]· diagnostics [{i}/{len(cfg.embedders)}] {emb_cfg.name}…[/dim]")
             traces = retriever.traces(emb_cfg)
             attribution = stage_attribution(traces, retriever.metric_k, cfg.n_rerank)
             sweep = rerank_threshold_sweep(traces, retriever.metric_k)

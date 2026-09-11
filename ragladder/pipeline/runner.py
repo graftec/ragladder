@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -290,7 +291,14 @@ def run_study(
     limit: int | None = None,
     cache_dir: str | Path | None = ".cache/embeddings",
     retriever: Retriever | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> RunResult:
+    """Run the study. `progress`, if given, is called with human-readable status
+    strings as each embedder and ladder rung is processed — useful for long runs."""
+    def _tell(msg: str) -> None:
+        if progress:
+            progress(msg)
+
     if retriever is None:
         if dataset is None:
             dataset = load_dataset(cfg.corpus, cfg.queries, cfg.qrels)
@@ -307,7 +315,10 @@ def run_study(
         },
     )
 
-    for emb_cfg in cfg.embedders:
+    n_emb = len(cfg.embedders)
+    for i, emb_cfg in enumerate(cfg.embedders, start=1):
+        tag = f"[{i}/{n_emb}] {emb_cfg.name}"
+        _tell(f"{tag}: embedding corpus + dense search")
         embedder = retriever.embedder(emb_cfg)
         # Ensure dense (and thus the model's dim) is populated before reading dim.
         retriever._dense_candidates(emb_cfg)
@@ -329,6 +340,7 @@ def run_study(
                     )
                 )
                 continue
+            _tell(f"{tag}: rung {' → '.join(stages)}")
             rankings = retriever.rankings(emb_cfg, stages)
             metrics = evaluate(
                 rankings, retriever.qrels, retriever.metric_k, prr_k=retriever.prr_k
@@ -337,6 +349,9 @@ def run_study(
                 RungResult(stages=stages, label=label, implemented=True, metrics=metrics)
             )
 
+        best = next((r.metrics for r in reversed(ladder.rungs) if r.metrics), None)
+        done = f" (recall@{result.k}={best.recall_at_k:.3f})" if best else ""
+        _tell(f"{tag}: done{done}")
         result.ladders.append(ladder)
 
     return result

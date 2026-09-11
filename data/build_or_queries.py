@@ -31,7 +31,9 @@ def _corpus_ids(corpus_path: Path) -> set[str]:
     return {json.loads(line)["_id"] for line in corpus_path.open(encoding="utf-8") if line.strip()}
 
 
-def convert(csv_path: Path, corpus_ids: set[str]) -> tuple[list[dict], list[dict]]:
+def convert(
+    csv_path: Path, corpus_ids: set[str], source: str = "OR_Aufgaben"
+) -> tuple[list[dict], list[dict]]:
     queries: list[dict] = []
     qrels: list[dict] = []
     missing: list[str] = []
@@ -50,7 +52,7 @@ def convert(csv_path: Path, corpus_ids: set[str]) -> tuple[list[dict], list[dict
                 {
                     "_id": q_id,
                     "text": question,
-                    "metadata": {"source": "OR_Aufgaben", "articles": article_nums},
+                    "metadata": {"source": source, "articles": article_nums},
                 }
             )
             qrels.append({"query_id": q_id, "relevant": relevant})
@@ -80,10 +82,11 @@ def main() -> None:
     ap.add_argument("--corpus", type=Path, default=Path("data/or-corpus.jsonl"))
     ap.add_argument("--queries", type=Path, default=Path("data/or-queries.jsonl"))
     ap.add_argument("--qrels", type=Path, default=Path("data/or-qrels.jsonl"))
+    ap.add_argument("--source", default="OR_Aufgaben", help="metadata.source tag (e.g. 'gen' for LLM-generated)")
     args = ap.parse_args()
 
     corpus_ids = _corpus_ids(args.corpus)
-    queries, qrels = convert(args.csv, corpus_ids)
+    queries, qrels = convert(args.csv, corpus_ids, source=args.source)
 
     _write_jsonl(queries, args.queries)
     _write_jsonl(qrels, args.qrels)

@@ -76,3 +76,13 @@ def test_limit_flag(tiny_dir):
     cfg = StudyConfig.from_yaml(tiny_dir / "study.yaml")
     result = run_study(cfg, limit=1, cache_dir=None)
     assert result.dataset_summary["n_queries"] == 1
+
+
+def test_progress_callback_fires(tiny_dir):
+    cfg = StudyConfig.from_yaml(tiny_dir / "study.yaml")
+    msgs: list[str] = []
+    run_study(cfg, cache_dir=None, progress=msgs.append)
+    # one embedder (bow): expect an embedding line, a rung line, and a done line
+    assert any("embedding corpus" in m for m in msgs)
+    assert any("rung dense" in m for m in msgs)
+    assert any("done" in m for m in msgs)
