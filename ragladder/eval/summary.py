@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ragladder.eval.metrics import MetricResult
-from ragladder.pipeline.runner import RunResult
+from ragladder.pipeline.runner import RunResult, best_rung
 
 # Balanced-blend weights (documented in the report). MRR leads; recall and a
 # clean (low wrong-context) result split the rest.
@@ -51,6 +51,7 @@ class EmbedderScore:
     mrr_norm: float
     clean_norm: float
     score: float
+    best_config: str = ""  # the rung that won for this model, e.g. "dense" or "dense → bm25 → rerank"
     is_favorite: bool = False
 
 
@@ -81,12 +82,13 @@ class Summary:
     quality: QualityRating
 
 
-def _best_metrics(result: RunResult) -> list[tuple[str, MetricResult]]:
+def _best_metrics(result: RunResult, metric: str) -> list[tuple[str, MetricResult, str]]:
+    """(embedder, metrics, best-rung config) at each model's BEST rung, not its last."""
     out = []
     for ladder in result.ladders:
-        rungs = [r for r in ladder.rungs if r.implemented and r.metrics is not None]
-        if rungs:
-            out.append((ladder.embedder, rungs[-1].metrics))
+        rung = best_rung(ladder, metric=metric)
+        if rung is not None:
+            out.append((ladder.embedder, rung.metrics, " → ".join(rung.stages)))
     return out
 
 
@@ -148,13 +150,14 @@ def _minmax(values: list[float]) -> list[float]:
 
 
 def summarize(result: RunResult) -> Summary | None:
-    entries = _best_metrics(result)
+    primary = "mrr" if "mrr" in result.metrics_requested else "recall"
+    entries = _best_metrics(result, primary)
     if not entries:
         return None
 
-    recalls = [m.recall_at_k for _, m in entries]
-    mrrs = [m.mrr for _, m in entries]
-    wrongs = [m.avg_wrong_count for _, m in entries]
+    recalls = [m.recall_at_k for _, m, _ in entries]
+    mrrs = [m.mrr for _, m, _ in entries]
+    wrongs = [m.avg_wrong_count for _, m, _ in entries]
 
     recall_n = _minmax(recalls)
     mrr_n = _minmax(mrrs)
@@ -171,8 +174,9 @@ def summarize(result: RunResult) -> Summary | None:
             mrr_norm=mrr_n[i],
             clean_norm=clean_n[i],
             score=W_MRR * mrr_n[i] + W_RECALL * recall_n[i] + W_CLEAN * clean_n[i],
+            best_config=config,
         )
-        for i, (name, m) in enumerate(entries)
+        for i, (name, m, config) in enumerate(entries)
     ]
     rows.sort(key=lambda r: r.score, reverse=True)
     rows[0].is_favorite = True

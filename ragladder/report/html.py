@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ragladder.eval.diagnostics import StageAttribution, ThresholdSweep
 from ragladder.eval.summary import Summary
-from ragladder.pipeline.runner import LadderResult, RunResult
+from ragladder.pipeline.runner import LadderResult, RunResult, best_rung
 
 # Per-embedder diagnostics: name -> (stage attribution, reranker sweep or None).
 Diagnostics = dict[str, tuple[StageAttribution, "ThresholdSweep | None"]]
@@ -94,14 +94,16 @@ def _ladder_chart(ladder: LadderResult, primary: str, vmax: float) -> str:
 
 def _metric_table(result: RunResult) -> str:
     prr_k = result.prr_k or result.k
+    primary = _primary(result.metrics_requested)
     rows = []
     for ladder in result.ladders:
-        rungs = _implemented(ladder)
-        best = rungs[-1].metrics if rungs else None
-        if best is None:
+        rung = best_rung(ladder, metric="recall" if primary == "recall" else "mrr")
+        if rung is None:
             continue
+        best = rung.metrics
         rows.append(
             f"<tr><td>{html.escape(ladder.embedder)}</td>"
+            f"<td>{html.escape(' → '.join(rung.stages))}</td>"
             f"<td>{ladder.dim or '?'}</td>"
             f"<td>{ladder.max_input_tokens or '?'}</td>"
             f"<td>{best.recall_at_k:.3f}</td>"
@@ -112,6 +114,8 @@ def _metric_table(result: RunResult) -> str:
     tt = _tooltips(result.k, prr_k, "")
     header = (
         _th("embedder", tt["embedder"])
+        + _th("best config", "The ladder rung that scored highest for this model — not "
+              "necessarily the full pipeline (strong embedders can peak at dense-only).")
         + _th("dim", tt["dim"])
         + _th("max_tok", tt["max_tok"])
         + _th(f"recall@{result.k}", tt["recall"])
@@ -339,13 +343,16 @@ def _summary_html(summary: Summary | None) -> str:
         cls = ' class="favorite"' if r.is_favorite else ""
         rows += (
             f"<tr{cls}><td>{marker}</td><td>{html.escape(r.embedder)}</td>"
+            f"<td>{html.escape(r.best_config)}</td>"
             f"<td><b>{r.score:.3f}</b></td><td>{r.recall_at_k:.3f}</td>"
             f"<td>{r.mrr:.3f}</td><td>{r.perfect_retrieval_rate:.3f}</td>"
             f"<td>{r.avg_wrong_count:.2f}</td></tr>"
         )
     head = (
         "<th></th>"
-        + _th("embedder", "The embedding model, at its best pipeline rung.")
+        + _th("embedder", "The embedding model, at its best-scoring rung.")
+        + _th("best config", "The ladder rung that scored highest for this model — not "
+              "necessarily the full pipeline.")
         + _th("score", f"Balanced score = {w['mrr']}·MRR' + {w['recall']}·recall' "
               f"+ {w['clean']}·clean' (' = min-max normalized across the models here; "
               "clean' rewards fewer wrong docs).")

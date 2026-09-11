@@ -65,6 +65,19 @@ class RunResult:
     ladders: list[LadderResult] = field(default_factory=list)
 
 
+def best_rung(ladder: LadderResult, metric: str = "mrr") -> RungResult | None:
+    """The implemented rung that maximizes `metric` — NOT necessarily the last.
+
+    Strong embedders can peak at dense-only, with fusion/rerank dragging them
+    down; reporting the last rung would hide that. `metric` is 'mrr' or 'recall'.
+    """
+    rungs = [r for r in ladder.rungs if r.implemented and r.metrics is not None]
+    if not rungs:
+        return None
+    key = (lambda r: r.metrics.recall_at_k) if metric == "recall" else (lambda r: r.metrics.mrr)
+    return max(rungs, key=key)
+
+
 def _ladder_rungs(pipeline: list[str]) -> list[tuple[list[str], str]]:
     """Cumulative prefixes with a label for each rung's marginal stage."""
     rungs: list[tuple[list[str], str]] = []

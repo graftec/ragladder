@@ -12,10 +12,6 @@ embedders:
   - name: bge-m3
     type: sentence_transformers
     model: BAAI/bge-m3
-  - name: voyage-law-2          # legal-domain, series 2 (50M free tokens)
-    type: voyage
-    model: voyage-law-2
-    api_key_env: VOYAGE_API_KEY
   - name: voyage-4-large        # general multilingual, series 4 (200M free tokens), MRL
     type: voyage
     model: voyage-4-large

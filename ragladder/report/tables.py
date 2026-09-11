@@ -14,7 +14,7 @@ from ragladder.eval.ab import ABResult
 from ragladder.eval.diagnostics import StageAttribution, ThresholdSweep
 from ragladder.eval.stats import LengthStats, TruncationStat
 from ragladder.eval.summary import Summary
-from ragladder.pipeline.runner import LadderResult, RunResult
+from ragladder.pipeline.runner import LadderResult, RunResult, best_rung
 
 
 def _primary_metric(metrics_requested: list[str]) -> str:
@@ -46,8 +46,11 @@ def render_run(result: RunResult, console: Console | None = None) -> None:
 
 
 def _render_comparison(result: RunResult, console: Console) -> None:
-    table = Table(title="Model comparison (best implemented rung)")
+    primary = _primary_metric(result.metrics_requested)
+    metric_key = "recall" if primary == "recall@k" else "mrr"
+    table = Table(title=f"Model comparison (each model's best rung by {primary})")
     table.add_column("embedder", style="bold")
+    table.add_column("best config")
     table.add_column("dim", justify="right")
     table.add_column("max_tok", justify="right")
     prr_k = result.prr_k or result.k
@@ -57,13 +60,14 @@ def _render_comparison(result: RunResult, console: Console) -> None:
     table.add_column("avg_wrong", justify="right")
 
     for ladder in result.ladders:
-        rungs = _implemented_rungs(ladder)
-        best = rungs[-1].metrics if rungs else None
-        if best is None:
-            table.add_row(ladder.embedder, str(ladder.dim or "?"), "—", "—", "—", "—", "—")
+        rung = best_rung(ladder, metric=metric_key)
+        if rung is None:
+            table.add_row(ladder.embedder, "—", str(ladder.dim or "?"), "—", "—", "—", "—", "—")
             continue
+        best = rung.metrics
         table.add_row(
             ladder.embedder,
+            " → ".join(rung.stages),
             str(ladder.dim or "?"),
             str(ladder.max_input_tokens or "?"),
             f"{best.recall_at_k:.3f}",
@@ -123,6 +127,7 @@ def render_summary(summary: Summary, console: Console | None = None) -> None:
     )
     table.add_column("")
     table.add_column("embedder", style="bold")
+    table.add_column("best config")
     table.add_column("score", justify="right")
     table.add_column(f"recall@{summary.k}", justify="right")
     table.add_column("MRR", justify="right")
@@ -133,6 +138,7 @@ def render_summary(summary: Summary, console: Console | None = None) -> None:
         table.add_row(
             star,
             r.embedder,
+            r.best_config,
             f"[bold]{r.score:.3f}[/bold]" if r.is_favorite else f"{r.score:.3f}",
             f"{r.recall_at_k:.3f}",
             f"{r.mrr:.3f}",

@@ -36,8 +36,9 @@ def _summary_dict(result: RunResult) -> dict | None:
         "within_noise": s.within_noise,
         "caveat": s.caveat,
         "ranking": [
-            {"embedder": r.embedder, "score": round(r.score, 4), "mrr": round(r.mrr, 4),
-             "recall@k": round(r.recall_at_k, 4), "avg_wrong": round(r.avg_wrong_count, 4)}
+            {"embedder": r.embedder, "best_config": r.best_config, "score": round(r.score, 4),
+             "mrr": round(r.mrr, 4), "recall@k": round(r.recall_at_k, 4),
+             "avg_wrong": round(r.avg_wrong_count, 4)}
             for r in s.rows
         ],
     }
